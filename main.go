@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/antchfx/htmlquery"
@@ -26,15 +26,15 @@ var (
 		"Games to restrict the command to: arena, daggerfall, battlespire, redguard, morrowind, shadowkey, oblivion, skyrim, online")
 
 	bookLists = map[string]string{
-		"arena":       "https://www.imperial-library.info/books/arena/by-title",
-		"daggerfall":  rootURL + "/books/daggerfall/by-title",
-		"battlespire": rootURL + "/books/battlespire/by-title",
-		"redguard":    rootURL + "/books/redguard/by-title",
-		"morrowind":   rootURL + "/books/morrowind/by-title",
-		"shadowkey":   rootURL + "/books/shadowkey/by-title",
-		"oblivion":    rootURL + "/books/oblivion/by-title",
-		"skyrim":      rootURL + "/books/skyrim/by-title",
-		"online":      rootURL + "/books/online/by-title",
+		"arena":       "/books/arena/by-title",
+		"daggerfall":  "/books/daggerfall/by-title",
+		"battlespire": "/books/battlespire/by-title",
+		"redguard":    "/books/redguard/by-title",
+		"morrowind":   "/books/morrowind/by-title",
+		"shadowkey":   "/books/shadowkey/by-title",
+		"oblivion":    "/books/oblivion/by-title",
+		"skyrim":      "/books/skyrim/by-title",
+		"online":      "/books/online/by-title",
 	}
 )
 
@@ -54,9 +54,11 @@ func main() {
 
 		var books []Book
 
-		err = traverseBooks(*flagURL, func(doc *html.Node, url string) {
+		err = traverseBooks(*flagURL, func(doc *html.Node, url string) error {
 			book := newBookFromHTMLNode(doc, url)
 			books = append(books, book)
+
+			return nil
 		})
 
 		b, err := json.Marshal(books)
@@ -88,7 +90,7 @@ func download(selectedGames []string, sources map[string]string) error {
 			continue
 		}
 
-		resp, err := http.Get("https://" + url)
+		resp, err := http.Get("https://" + filepath.Join(rootURL, url))
 		if err != nil {
 			return err
 		}
@@ -99,35 +101,58 @@ func download(selectedGames []string, sources map[string]string) error {
 			return err
 		}
 
-		var books []Book
-
-		for _, n := range htmlquery.Find(
-			doc,
+		nodes := htmlquery.Find(doc,
 			`//*[@id="content"]/div/div[2]/div/ul/li/span/span/a`,
-		) {
-			err := traverseBooks("https://"+path.Join(rootURL, n.Attr[0].Val),
-				func(doc *html.Node, url string) {
-					book := newBookFromHTMLNode(doc, url)
-					books = append(books, book)
+		)
+
+		for _, n := range nodes {
+			err := traverseBooks("https://"+filepath.Join(rootURL, n.Attr[0].Val),
+				func(doc *html.Node, url string) error {
+					node := htmlquery.FindOne(
+						doc,
+						`//*[@id="main"]`,
+					)
+					if node == nil {
+						return fmt.Errorf(
+							"node main not found in doc: %#v", doc,
+						)
+					}
+
+					path := filepath.Join("imperial-library", game)
+					if err := os.MkdirAll(path, os.ModePerm); err != nil {
+						return err
+					}
+
+					filename := url[strings.LastIndex(url, "/"):]
+
+					file, err := os.Create(filepath.Join(path, filename))
+					if err != nil {
+						return err
+					}
+
+					fmt.Println("rendering", game, filename)
+
+					if err := html.Render(file, node); err != nil {
+						return err
+					}
+
+					if err := file.Close(); err != nil {
+						return err
+					}
+
+					return nil
 				},
 			)
 			if err != nil {
 				return err
 			}
 		}
-
-		b, err := json.Marshal(books)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(b)
 	}
 
 	return nil
 }
 
-func traverseBooks(url string, fn func(*html.Node, string)) error {
+func traverseBooks(url string, fn func(*html.Node, string) error) error {
 	doc, err := htmlquery.LoadURL(url)
 	if err != nil {
 		return err
@@ -142,7 +167,9 @@ func traverseBooks(url string, fn func(*html.Node, string)) error {
 			}
 		}
 	} else {
-		fn(doc, url)
+		if err := fn(doc, url); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -153,7 +180,7 @@ func findSerieLinks(doc *html.Node) []string {
 	for _, n := range htmlquery.Find(
 		doc, `//*[@class="book-navigation"]/ul[@class="menu"]/li/a`,
 	) {
-		links = append(links, "https://"+path.Join(rootURL, n.Attr[0].Val))
+		links = append(links, "https://"+filepath.Join(rootURL, n.Attr[0].Val))
 	}
 
 	if len(links) == 0 {
