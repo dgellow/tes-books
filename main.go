@@ -123,7 +123,7 @@ func download(selectedGames []string, sources map[string]string) error {
 						return err
 					}
 
-					filename := url[strings.LastIndex(url, "/"):]
+					filename := url[strings.LastIndex(url, "/"):] + ".html"
 
 					file, err := os.Create(filepath.Join(path, filename))
 					if err != nil {
