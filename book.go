@@ -53,10 +53,27 @@ func newBookFromHTMLNode(doc *html.Node, source string) Book {
 
 	for _, n := range htmlquery.Find(
 		doc,
-		`//*[@class="node node-book"]/div[3]/p`,
+		`//*[@class="node node-book"]/div[3]/*`,
 	) {
-		text := strings.TrimSpace(htmlquery.InnerText(n))
-		book.Content = append(book.Content, text)
+		if n.Data == "div" {
+			continue
+		}
+
+		if child := n.FirstChild; child.Data == "img" {
+			var imageLink string
+			for _, attr := range child.Attr {
+				if attr.Key == "src" {
+					imageLink = attr.Val
+					break
+				}
+			}
+			if imageLink != "" {
+				book.Content = append(book.Content, imageLink)
+			}
+		} else {
+			text := strings.TrimSpace(htmlquery.InnerText(n))
+			book.Content = append(book.Content, text)
+		}
 	}
 
 	return book
