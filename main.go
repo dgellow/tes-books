@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/antchfx/htmlquery"
 	"golang.org/x/net/html"
@@ -15,38 +16,45 @@ import (
 const (
 	rootURL = "www.imperial-library.info"
 	// libraryURL = "https://www.imperial-library.info/books/all/by-title"
-	// arenaURL       = "https://www.imperial-library.info/books/arena/by-title"
-	daggerfallURL  = rootURL + "/books/daggerfall/by-title"
-	battlespireURL = rootURL + "/books/battlespire/by-title"
-	redguardURL    = rootURL + "/books/redguard/by-title"
-	morrowindURL   = rootURL + "/books/morrowind/by-title"
-	shadowkeyURL   = rootURL + "/books/shadowkey/by-title"
-	oblivionURL    = rootURL + "/books/oblivion/by-title"
-	skyrimURL      = rootURL + "/books/skyrim/by-title"
-	onlineURL      = rootURL + "/books/online/by-title"
 )
 
 var (
-	command    = flag.String("command", "", "Command to run: download, convert, bookpage + url")
-	commandURL = flag.String("url", "", "")
+	flagCommand = flag.String("command", "",
+		"Command to run: download, bookpage (requires -url)")
+	flagURL   = flag.String("url", "", "")
+	flagGames = flag.String("games", "",
+		"Games to restrict the command to: arena, daggerfall, battlespire, redguard, morrowind, shadowkey, oblivion, skyrim, online")
+
+	bookLists = map[string]string{
+		"arena":       "https://www.imperial-library.info/books/arena/by-title",
+		"daggerfall":  rootURL + "/books/daggerfall/by-title",
+		"battlespire": rootURL + "/books/battlespire/by-title",
+		"redguard":    rootURL + "/books/redguard/by-title",
+		"morrowind":   rootURL + "/books/morrowind/by-title",
+		"shadowkey":   rootURL + "/books/shadowkey/by-title",
+		"oblivion":    rootURL + "/books/oblivion/by-title",
+		"skyrim":      rootURL + "/books/skyrim/by-title",
+		"online":      rootURL + "/books/online/by-title",
+	}
 )
 
 func main() {
 	flag.Parse()
 
 	var err error
-	switch *command {
+	switch *flagCommand {
 	case "download":
-		err = download()
+		games := strings.Split(*flagGames, ",")
+		err = download(games, bookLists)
 	case "bookpage":
-		if *commandURL == "" {
+		if *flagURL == "" {
 			flag.Usage()
 			os.Exit(-1)
 		}
 
 		var books []Book
 
-		err = traverseBooks(*commandURL, func(doc *html.Node, url string) {
+		err = traverseBooks(*flagURL, func(doc *html.Node, url string) {
 			book := newBookFromHTMLNode(doc, url)
 			books = append(books, book)
 		})
@@ -57,8 +65,6 @@ func main() {
 		}
 
 		fmt.Println(string(b))
-	case "convert":
-		err = convert()
 	default:
 		flag.Usage()
 		os.Exit(-1)
@@ -69,10 +75,19 @@ func main() {
 	}
 }
 
-func download() error {
-	for _, url := range []string{
-		skyrimURL,
-	} {
+func download(selectedGames []string, sources map[string]string) error {
+	for game, url := range sources {
+		found := false
+		for _, g := range selectedGames {
+			if g == game {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+
 		resp, err := http.Get("https://" + url)
 		if err != nil {
 			return err
