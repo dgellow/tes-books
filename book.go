@@ -29,14 +29,18 @@ func newBookFromHTMLNode(doc *html.Node, source string) Book {
 	if authorNode := htmlquery.FindOne(
 		doc, `//*[@class="node node-book"]/div[3]/div[1]/div/div`,
 	); authorNode != nil {
-		book.Author = strings.TrimSpace(htmlquery.InnerText(authorNode))
+		text := strings.Replace(
+			htmlquery.InnerText(authorNode),
+			"Author:", "", 1,
+		)
+		book.Author = strings.TrimSpace(text)
 	}
 
 	if commentNode := htmlquery.FindOne(
 		doc, `//*[@class="node node-book"]/div[3]/div[2]/div/div/p`,
 	); commentNode != nil {
-		text := strings.TrimSpace(htmlquery.InnerText(commentNode))
-		book.LibrarianComment = text
+		text := htmlquery.InnerText(commentNode)
+		book.LibrarianComment = strings.TrimSpace(text)
 	}
 
 	for _, n := range htmlquery.Find(
